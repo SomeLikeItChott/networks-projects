@@ -2,12 +2,49 @@ import java.nio.ByteBuffer;
 
 public class RManageUDP {
 	private int mode = 0;
-	private long modeParameter = 1;
+	private long modeParameter = 256;
 	private String filename;
 	private int localPort;
 	
 	final int headerLength = 10;
 	final int messageLength = 20;
+	
+	public int getWindowSize(){
+		if(getMode() == 0)
+			return 1;
+		else
+			return (int) (getModeParameter()/(headerLength + messageLength));
+	}
+	
+	public void setFin(byte[] frame){
+		frame[9] = (byte)'f';
+	}
+	
+	public boolean isFin(byte[] frame){
+		if(frame[9] == (byte)'f')
+			return true;
+		else
+			return false;
+	}
+
+	public void setAck(byte[] frame){
+		frame[8] = (byte)'a';
+	}
+	
+	public boolean isAck(byte[] frame){
+		if(frame[8] == (byte)'a')
+			return true;
+		else
+			return false;
+	}
+	
+	public byte[] getMessage(byte[] frame){
+		byte[] mess = new byte[messageLength];
+		for(int i = 0; i < messageLength; i++){
+			mess[i] = frame[i + headerLength];
+		}
+		return mess;
+	}
 	
 	public long getSeqNum(byte[] frame){ 
 		ByteBuffer b = ByteBuffer.allocate(8);
@@ -46,11 +83,6 @@ public class RManageUDP {
 	public boolean setMode(int mode) {
 		this.mode = mode;
 		if(this.mode == mode){
-			if(this.mode == 1){
-				this.setModeParameter(256);
-			}else if(this.mode == 0){
-				this.setModeParameter(1);
-			}
 			return true;
 		}else
 			return false;

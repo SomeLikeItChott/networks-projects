@@ -1,7 +1,7 @@
 import java.io.IOException;
 import java.net.DatagramPacket;
 
-public class GetAckThread implements Runnable {
+public class GetAckThread extends Thread {
 	
 	private RSendUDP parent;
 	
@@ -10,10 +10,9 @@ public class GetAckThread implements Runnable {
 	}
 	
 	public void run() {
-		while(parent.getLAR() < parent.getFrameBuffer().length){
+		while(parent.getLAR() < (parent.getFrameBuffer().length - 1)){
 			byte[] frame = new byte[parent.getHeaderLength() + parent.getMessageLength()];
 			DatagramPacket packet = new DatagramPacket(frame, frame.length);
-			System.out.println("About to receive ack, hopefully this doesn't block");
 			try {
 				parent.getSocket().receive(packet);
 			} catch (IOException e) {
@@ -23,7 +22,9 @@ public class GetAckThread implements Runnable {
 			parent.printFrame(frame);
 			if(parent.getSeqNum(frame) > parent.getLAR())
 				parent.setLAR(parent.getSeqNum(frame));
-			parent.removeFromSent(frame);
+			System.out.println("LAR is now " + parent.getLAR());
+			parent.removeFromSentCumulative(parent.getSeqNum(frame));
 		}
+		System.out.println("All ACKs have been received");
 	}
 }

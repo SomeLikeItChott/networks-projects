@@ -1,7 +1,7 @@
 import java.io.IOException;
 import java.net.DatagramPacket;
 
-public class SenderThread implements Runnable {
+public class SenderThread extends Thread {
 
 	private RSendUDP parent;
 	
@@ -11,18 +11,25 @@ public class SenderThread implements Runnable {
 	
 	@Override
 	public void run() {
-		while(parent.getLAR() < parent.getFrameBuffer().length){
-			if(parent.getLFS() < parent.getLAR() + parent.getModeParameter()){
+		System.out.println("window size: " + parent.getWindowSize());
+		while(parent.getLAR() < (parent.getFrameBuffer().length - 1)){
+			if(parent.getLFS() < parent.getLAR() + parent.getWindowSize() && parent.getLFS() < (parent.getFrameBuffer().length - 1)){
+				System.out.println("LFS == " + parent.getLFS());
 				parent.setLFS(parent.getLFS() + 1);
+				System.out.println("just change lfs to " + parent.getLFS());
 				byte[] frame = parent.getFrameBuffer()[(int)parent.getLFS()];
 				sendFrame(frame);
 				parent.addFrameToSent(frame);
 			}
 			if(parent.getTimedOutFrame() != null){
 				byte[] frame = parent.getTimedOutFrame();
+				parent.removeFromSent(frame);
+				parent.addFrameToSent(frame);
 				sendFrame(frame);
+				
 			}
 		}
+		System.out.println("All ACKs have been received.");
 	}
 
 	private void sendFrame(byte[] frame) {
