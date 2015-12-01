@@ -15,65 +15,92 @@ public class RReceiveUDP extends RManageUDP implements edu.utulsa.unet.RReceiveU
 	private ArrayList<byte[]> message;
 	private InetAddress address;
 	private int port;
+	boolean ackedFinalFrame;
 
 	
 	
 	public boolean receiveFile() {
-		System.out.println("Starting to receive!!!");
+		try {
+			socket = new UDPSocket(this.getLocalPort());
+			this.setMTU(socket.getSendBufferSize());
+		} catch (SocketException e1) {
+			e1.printStackTrace();
+		}
+		
+		long startTime = System.currentTimeMillis();
+		System.out.print("local address is " + socket.getLocalAddress().getHostAddress() + ":" + socket.getLocalPort());
+		
 		byte[] frame = new byte[this.getHeaderLength() + this.getMessageLength()];
 		DatagramPacket packet;
 		message = new ArrayList<byte[]>();
 		long seqNum;
 		LFR = -1;
 		LAF = LFR + getWindowSize();
+		ackedFinalFrame = false;
+		//System.out.println("window size: " + getWindowSize());
+		boolean gottenAnyFrames = false;
+
 		
-		System.out.println(getWindowSize());
-		try {
-			socket = new UDPSocket(this.getLocalPort());
-		} catch (SocketException e1) {
-			e1.printStackTrace();
-		}
-		while(LFR < LAF){
+		while(!ackedFinalFrame){
+			frame = new byte[this.getHeaderLength() + this.getMessageLength()];
 			packet = new DatagramPacket(frame, frame.length);
 			try {
 				socket.receive(packet);
+				if(!gottenAnyFrames){
+					gottenAnyFrames = true;
+					System.out.println(" receiving from " 
+					+ packet.getAddress().getHostAddress() + ":" + packet.getPort());
+					
+					if(this.getMode() == 0)
+						System.out.println("using stop-and-wait");
+					else
+						System.out.println("using sliding window");
+				}
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 			
 			port = packet.getPort();
 			address = packet.getAddress();
-			System.out.print("just got frame ");
-			this.printFrame(frame);
+			//this.printFrame(frame);
 			seqNum = getSeqNum(frame);
-			
-			System.out.println("LFR: " + LFR + "   LAF: " + LAF + "    SEQ: " + seqNum);
+			System.out.println("message " + seqNum + " received with " + frame.length + " bytes of data");			
 						
 			if(LFR < seqNum && seqNum <= LAF){
-				System.out.println("And now we are storing the frame");
+				//System.out.println("And now we are storing the frame");
 				storeFrame(seqNum, frame);
 
-				sendAckMaybe(seqNum);
+				sendAckMaybe(frame);
 			}else{
-				System.out.println("not storing that frame");
-				sendAckMaybe(seqNum);
+				//System.out.println("not storing that frame");
+				sendAckMaybe(frame);
 			}
 			
-		}
-		System.out.println("Receiver is done");
+			//System.out.println("acked final frame: " + ackedFinalFrame);
+		}		
 		
+		int fileSize = 0;
 		try {
 			BufferedWriter outputStream = new BufferedWriter(new FileWriter(getFilename()));
-			outputStream.write("jfdsakljfsdaklfdsal");
+			for(int i = 0; i < message.size(); i++){
+				//printFrame(message.get(i));
+				for(int j = headerLength; j < headerLength + messageLength; j++){
+					if(message.get(i)[j] != -1){
+						fileSize++;
+						outputStream.write((char)message.get(i)[j]);
+					}
+				}
+			}
 			outputStream.close();
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		
-		socket.close();
-		
-		return false;
+		System.out.println("received " + this.getFilename() + " (" + fileSize 
+				+ " bytes) in " + ((System.currentTimeMillis() - startTime) / 1000.0) + " seconds");
+
+				
+		return true;
 	}
 	
 	private int getLatestCumulativeFrame(){
@@ -87,44 +114,64 @@ public class RReceiveUDP extends RManageUDP implements edu.utulsa.unet.RReceiveU
 	}
 	
 	private void storeFrame(long seqNum, byte[] frame) {
+		//System.out.println("We are stoirng " + seqNum);
 		while(seqNum >= message.size()){
 			message.add(null);
 		}
 		
 		message.set((int)seqNum, frame);
+		
+	}
+	
+	private void printMessage(){
+		System.out.println("---begin stored---");
+		for(int i = 0; i < message.size(); i++)
+			if(message.get(i) == null)
+				System.out.println("blank");
+			else
+				printFrame(message.get(i));
+		System.out.println("---end stored---");
 	}
 
-	private void sendAckMaybe(long seqNum) {
-		if(seqNum <= LFR + 1){
+	private void sendAckMaybe(byte[] frame) {
+		if(getSeqNum(frame) <= LFR + 1){
 			//that means that the "next" frame has been received
 			int latestCumFrame = getLatestCumulativeFrame();
-			System.out.println("latest cumulative frame: " + latestCumFrame);
-			sendAck(latestCumFrame);
+			//System.out.println("latest cumulative frame: " + latestCumFrame);
+			
+			sendAck(latestCumFrame, frame);
 			LFR = latestCumFrame;
 			LAF = LFR + this.getWindowSize();
 		}
 	}
 
-	private void sendAck(long seqNum) {
-		System.out.print("sending ack ");
-		byte[] frame = new byte[this.headerLength + this.messageLength];
-		this.putSeqNumInFrame(frame, seqNum);
-		printFrame(frame);
+	private void sendAck(long seqNum, byte[] frame) {
+		//System.out.print("we're looking at ");
+		//printFrame(frame);
+		System.out.println("sending ack for message " + seqNum);
+		byte[] ackFrame = new byte[this.headerLength + this.messageLength];
+		this.putSeqNumInFrame(ackFrame, seqNum);
+		if(this.isFin(message.get(getLatestCumulativeFrame()))){
+			//System.out.print("the last frame is ");
+			//printFrame(message.get(getLatestCumulativeFrame()));
+			setFin(ackFrame);
+			ackedFinalFrame = true;
+		}
+		this.setAck(ackFrame);
+		//printFrame(ackFrame);
 		try {
-			socket.send(new DatagramPacket(frame, frame.length, address, port));
+			socket.send(new DatagramPacket(ackFrame, ackFrame.length, address, port));
 		} catch (IOException e) {
 			e.printStackTrace();
-		}
+		}	
 	}
 	
 	public static void main(String[] args){
 		RReceiveUDP receiver = new RReceiveUDP();
-		receiver.setMode(1);
-		receiver.setModeParameter(70);
-		receiver.setFilename("receive file.txt");
-		receiver.setLocalPort(32456);
+		//receiver.setMode(0);
+		//receiver.setModeParameter(100);
+		receiver.setFilename("receivefile.txt");
 		receiver.receiveFile();
 	}
-
 
 }

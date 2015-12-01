@@ -4,10 +4,17 @@ public class RManageUDP {
 	private int mode = 0;
 	private long modeParameter = 256;
 	private String filename;
-	private int localPort;
+	private int localPort = 12987;
 	
 	final int headerLength = 10;
-	final int messageLength = 20;
+	int messageLength;
+		
+	protected void setMTU(int MTU){
+		if(MTU > headerLength)
+			messageLength = MTU - headerLength;
+		else
+			System.out.println("MTU must be at least " + headerLength + " bytes long.");
+	}
 	
 	public int getWindowSize(){
 		if(getMode() == 0)
