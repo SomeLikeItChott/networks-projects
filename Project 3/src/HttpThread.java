@@ -1,24 +1,19 @@
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.PrintWriter;
-import java.net.ServerSocket;
 import java.net.Socket;
 
 public class HttpThread extends Thread {
 	private Socket client;
-	private int portNumber;
 	private final String SERVERTEXT = "ChottServer/1.0";
 
 	public HttpThread(Socket client) {
 		this.client = client;
-		portNumber = client.getLocalPort();
+		client.getLocalPort();
 	}
 
 	public void run() {
@@ -76,10 +71,10 @@ public class HttpThread extends Thread {
 	}
 
 	private boolean verifyHostLine(String message) {
-		if (message.contains("\r\nHost: "))
+		if (message.contains("\nHost: "))
 			return true;
 		else
-			respond(400, "Bad request");
+			respondError(400, "Bad request (No Host field)");
 		return false;
 
 	}
@@ -90,46 +85,41 @@ public class HttpThread extends Thread {
 			return true;
 		else if (method.equals("OPTIONS") || method.equals("POST") || method.equals("PUT") || method.equals("DELETE")
 				|| method.equals("TRACE") || method.equals("CONN")) {
-			respond(501, "Not implemented");
+			respondError(501, "Not implemented");
 			return false;
 		} else {
-			respond(400, "Bad request");
+			respondError(400, "Bad request");
 			return false;
 		}
 
 	}
 
 	private void sendResponse(String method, String request) {
-		char[] resource = null;
-		char character;
-		BufferedReader stream = null;
+		byte[] resource = null;
+		FileInputStream stream = null;
 		File file = new File("public_html" + request);
 		
 
 		if (!file.exists())
-			respond(404, "Can't find resource");
+			respondError(404, "Can't find resource");
 		else {
 			try {
-				stream = new BufferedReader(new FileReader(file));
+				stream = new FileInputStream(file);
 			} catch (FileNotFoundException e) {
 				System.out.println("Can't open up file");
-				e.printStackTrace();
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 
 			try {
-				resource = new char[(int) file.length()];
+				resource = new byte[(int) file.length()];
 				stream.read(resource);
 			} catch (IOException e) {
 				System.out.println("Reading that file really didn't work it's a whole issue");
 				e.printStackTrace();
 			}
 			
-			System.out.println(resource);
-
-			respond(202, "OK", new String(resource), getType(request));
+			//System.out.println(resource);
+			respondOk(202, "OK", resource, getType(request), method);
 		}
 	}
 
@@ -148,44 +138,56 @@ public class HttpThread extends Thread {
 			return "unknown";
 	}
 
-	private void respond(int status, String reason) {
-		String html = "<html><head><title>ERROR " + status + "</title></head><body>ERROR " + status + "<br>" + reason
+	private void respondError(int status, String reason) {
+		String htmlStr = "<html><head><title>ERROR " + status + "</title></head><body>ERROR " + status + "<br>" + reason
 				+ "</body></html>";
+		
+		byte[] html = htmlStr.getBytes();
 
 		String header = "HTTP/1.1 " + status + " " + reason + "\r\n" + "Content-Type: text/html\r\n"
-				+ "Content-Length: " + html.length() + "\r\n" + "Server: " + SERVERTEXT + "\r\n";
+				+ "Content-Length: " + html.length + "\r\n" + "Server: " + SERVERTEXT + "\r\n";
 
 		replyWithString(header, html);
 	}
 
-	private void respond(int status, String reason, String body, String type) {
+	private void respondOk(int status, String reason, byte[] resource, String type, String method) {
 		String header = "HTTP/1.1 " + status + " " + reason + "\r\n" + "Content-Type: " + type + "\r\n"
-				+ "Content-Length: " + body.length() + "\r\n" + "Server: " + SERVERTEXT + "\r\n";
-
-		replyWithString(header, body);
+				+ "Content-Length: " + resource.length + "\r\n" + "Server: " + SERVERTEXT + "\r\n";
+		
+		if(method.equals("GET"))
+			replyWithString(header, resource);
+		else
+			replyWithString(header, new byte[0]);
+	}
+	
+	private byte[] appendByteArrays(byte[] header, byte[] body){
+		byte[] message = new byte[header.length + body.length];
+		System.arraycopy(header, 0, message, 0, header.length);
+		System.arraycopy(body, 0, message, header.length, body.length);
+		
+		return message;
 	}
 
-	private void replyWithString(String header, String body) {
-		OutputStream stream = null;
-		PrintWriter writer = null;
+	private void replyWithString(String header, byte[] body) {
+		//OutputStream stream = null;
+		//PrintWriter writer = null;
+		byte[] message;
+		
 		System.out.println("----BEGIN RESPONSE---- (leaving out body of response)");
 		System.out.println(header);
 		System.out.println("---- END RESPONSE ----");
 		
-		String message = header + "\r\n" + body;
+		byte[] messageStart = (header + "\r\n").getBytes();
+		message = appendByteArrays(messageStart, body);
 		
-		//System.out.println(message);
 		
 		try {
-			PrintWriter out = new PrintWriter(client.getOutputStream(), true);
-			out.println(message);
+			OutputStream out = client.getOutputStream();
+			out.write(message);
 			out.close();
-			
-			PrintWriter o = new PrintWriter(new File("public_html/thefile"));
-			o.println(body);
-			o.close();
+
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
+			System.out.println("Couldn't write back to client");
 			e.printStackTrace();
 		}
 		
