@@ -1,4 +1,6 @@
 import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -30,7 +32,11 @@ public class RReceiveUDP extends RManageUDP implements edu.utulsa.unet.RReceiveU
 		long startTime = System.currentTimeMillis();
 		System.out.print("local address is " + socket.getLocalAddress().getHostAddress() + ":" + socket.getLocalPort());
 		
-		byte[] frame = new byte[this.getHeaderLength() + this.getMessageLength()];
+		if(this.getMode() == 1)
+			System.out.println("window size(packets): " + this.getWindowSize());
+		
+		//help
+		byte[] frame;
 		DatagramPacket packet;
 		message = new ArrayList<byte[]>();
 		long seqNum;
@@ -42,7 +48,8 @@ public class RReceiveUDP extends RManageUDP implements edu.utulsa.unet.RReceiveU
 
 		
 		while(!ackedFinalFrame){
-			frame = new byte[this.getHeaderLength() + this.getMessageLength()];
+			//help
+			frame = new byte[this.getHeaderLength() + this.getMaxMessageLength()];
 			packet = new DatagramPacket(frame, frame.length);
 			try {
 				socket.receive(packet);
@@ -64,7 +71,7 @@ public class RReceiveUDP extends RManageUDP implements edu.utulsa.unet.RReceiveU
 			address = packet.getAddress();
 			//this.printFrame(frame);
 			seqNum = getSeqNum(frame);
-			System.out.println("message " + seqNum + " received with " + frame.length + " bytes of data");			
+			System.out.println("message " + seqNum + " received with " + this.getLength(frame) + " bytes of data");			
 						
 			if(LFR < seqNum && seqNum <= LAF){
 				//System.out.println("And now we are storing the frame");
@@ -81,17 +88,18 @@ public class RReceiveUDP extends RManageUDP implements edu.utulsa.unet.RReceiveU
 		
 		int fileSize = 0;
 		try {
-			BufferedWriter outputStream = new BufferedWriter(new FileWriter(getFilename()));
+			FileOutputStream stream = new FileOutputStream(new File(this.getFilename()));
 			for(int i = 0; i < message.size(); i++){
 				//printFrame(message.get(i));
-				for(int j = headerLength; j < headerLength + messageLength; j++){
-					if(message.get(i)[j] != -1){
-						fileSize++;
-						outputStream.write((char)message.get(i)[j]);
-					}
+				for(int j = headerLength; j < headerLength + this.getLength(message.get(i)); j++){
+					//if(message.get(i)[j] != -1){
+					fileSize++;
+					//outputStream.write((char)message.get(i)[j]);
+					stream.write((int) message.get(i)[j]);
+					//}
 				}
 			}
-			outputStream.close();
+			stream.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -106,7 +114,7 @@ public class RReceiveUDP extends RManageUDP implements edu.utulsa.unet.RReceiveU
 	private int getLatestCumulativeFrame(){
 		for(int i = 0; i < message.size(); i++){
 			if(message.get(i) == null){
-				System.out.println("found null in getLatestCumFrame");
+				//System.out.println("found null in getLatestCumFrame");
 				return (i - 1);
 			}
 		}
@@ -149,7 +157,7 @@ public class RReceiveUDP extends RManageUDP implements edu.utulsa.unet.RReceiveU
 		//System.out.print("we're looking at ");
 		//printFrame(frame);
 		System.out.println("sending ack for message " + seqNum);
-		byte[] ackFrame = new byte[this.headerLength + this.messageLength];
+		byte[] ackFrame = new byte[this.headerLength];
 		this.putSeqNumInFrame(ackFrame, seqNum);
 		if(this.isFin(message.get(getLatestCumulativeFrame()))){
 			//System.out.print("the last frame is ");
@@ -168,9 +176,9 @@ public class RReceiveUDP extends RManageUDP implements edu.utulsa.unet.RReceiveU
 	
 	public static void main(String[] args){
 		RReceiveUDP receiver = new RReceiveUDP();
-		//receiver.setMode(0);
-		//receiver.setModeParameter(100);
-		receiver.setFilename("receivefile.txt");
+		receiver.setMode(1);
+		receiver.setModeParameter(10);
+		receiver.setFilename("import.txt");
 		receiver.receiveFile();
 	}
 

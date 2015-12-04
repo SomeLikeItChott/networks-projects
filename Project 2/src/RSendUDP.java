@@ -1,5 +1,6 @@
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
@@ -51,10 +52,11 @@ public class RSendUDP extends RManageUDP implements edu.utulsa.unet.RSendUDPI {
 		senderThread.start();
 		//System.out.println("Starting second thread");
 		//getAckThread.start();
+		int timesFinAcked = 0;
 		
 		boolean gottenAnyFrames = false;
 		while(this.getLAR() < (this.getFrameBuffer().length - 1)){
-			byte[] frame = new byte[this.getHeaderLength() + this.getMessageLength()];
+			byte[] frame = new byte[this.getHeaderLength()];
 			DatagramPacket packet = new DatagramPacket(frame, frame.length);
 			try {
 				this.getSocket().receive(packet);
@@ -116,20 +118,37 @@ public class RSendUDP extends RManageUDP implements edu.utulsa.unet.RSendUDPI {
 
 	private byte[][] prepareFrames(){
 		File infile = new File(getFilename());
-		byte[][] frameBuffer = new byte[(int)(infile.length()/messageLength) + 2][];
+		System.out.println(getMaxMessageLength());
+		byte[][] frameBuffer = new byte[(int)(infile.length()/getMaxMessageLength()) + 2][];
+		byte[] tempArr;
+		int frameDataLength;
 		
 		try {
-			BufferedReader inputStream = new BufferedReader(new FileReader(infile));
+			FileInputStream stream = new FileInputStream(infile);
 			for(int i = 0; i < frameBuffer.length; i++) {
-				frameBuffer[i] = new byte[headerLength + messageLength];
+				frameDataLength =  0;
+				tempArr = new byte[getMaxMessageLength()];
+				/*for(int j = 0; j < maxMessageLength; j++){
+					tempArr[j] = (byte)stream.read();
+					stream.read
+					if(tempArr[j] != -1)
+						frameDataLength++;
+				}*/
+				frameDataLength = stream.read(tempArr);
+				if(frameDataLength == -1)
+					frameDataLength = 0;
+				
+				frameBuffer[i] = new byte[headerLength + frameDataLength];
 				putSeqNumInFrame(frameBuffer[i], i);
-				for(int j = headerLength; j < messageLength + headerLength; j++){
-					frameBuffer[i][j] = (byte)inputStream.read();
-					if(frameBuffer[i][j] != -1)
-						fileSize++;
+				putLengthInFrame(frameBuffer[i], frameDataLength);
+				for(int j = 0; j < frameDataLength; j++){
+					frameBuffer[i][j + headerLength] = tempArr[j];
 				}
+				//printFrame(frameBuffer[i]);
+				fileSize += frameDataLength;
+				
 			}
-			inputStream.close();
+			stream.close();
 		} catch (FileNotFoundException e2) {
 			e2.printStackTrace();
 		} catch (IOException e) {
@@ -196,10 +215,11 @@ public class RSendUDP extends RManageUDP implements edu.utulsa.unet.RSendUDPI {
 	public static void main(String[] args){
 		RSendUDP sender = new RSendUDP();
 		//sender.setTimeout(1000);
-		//sender.setMode(0);
-		//sender.setModeParameter(100);
+		sender.setMode(1);
+		sender.setModeParameter(10);
 		sender.setFilename("veryimportant.txt");
-		sender.setReceiver(new InetSocketAddress("129.244.178.192", 12987));
+		sender.setLocalPort(23456);
+		sender.setReceiver(new InetSocketAddress("localhost", 12987));
 		sender.sendFile();
 	}
 }

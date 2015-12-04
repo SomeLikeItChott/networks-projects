@@ -6,12 +6,13 @@ public class RManageUDP {
 	private String filename;
 	private int localPort = 12987;
 	
-	final int headerLength = 10;
-	int messageLength;
+	final int headerLength = 12;
+	private int maxMessageLength;
+	int MTU;
 		
-	protected void setMTU(int MTU){
-		if(MTU > headerLength)
-			messageLength = MTU - headerLength;
+	protected void setMTU(int mt){
+		if(mt > headerLength)
+			this.MTU = mt;
 		else
 			System.out.println("MTU must be at least " + headerLength + " bytes long.");
 	}
@@ -20,7 +21,7 @@ public class RManageUDP {
 		if(getMode() == 0)
 			return 1;
 		else
-			return (int) (getModeParameter()/(headerLength + messageLength));
+			return (int) Math.max(1, (this.getModeParameter()/this.MTU));
 	}
 	
 	public void setFin(byte[] frame){
@@ -46,8 +47,8 @@ public class RManageUDP {
 	}
 	
 	public byte[] getMessage(byte[] frame){
-		byte[] mess = new byte[messageLength];
-		for(int i = 0; i < messageLength; i++){
+		byte[] mess = new byte[frame.length - headerLength];
+		for(int i = 0; i < mess.length; i++){
 			mess[i] = frame[i + headerLength];
 		}
 		return mess;
@@ -69,10 +70,26 @@ public class RManageUDP {
 		}
 	}
 	
+	public int getLength(byte[] frame){
+		ByteBuffer b = ByteBuffer.allocate(2);
+		b.put(frame, 10, 2);
+		long a = b.getShort(0);
+		return (int)a;
+	}
+	
+	public void putLengthInFrame(byte[] frame, int length){
+		ByteBuffer b = ByteBuffer.allocate(2);
+		b.putShort((short)length);
+		byte[] arr = b.array();
+		for(int i = 0; i < arr.length; i++){
+			frame[10 + i] = arr[i];
+		}
+	}
+	
 	public void printFrame(byte[] frame){
 		for (int j = 0; j < headerLength; j++)
 			System.out.print(frame[j] + " ");
-		for (int j = headerLength; j < headerLength + messageLength; j++)
+		for (int j = headerLength; j < frame.length; j++)
 			System.out.print((char)frame[j]);
 		System.out.println();
 	}
@@ -132,8 +149,8 @@ public class RManageUDP {
 		return headerLength;
 	}
 
-	public int getMessageLength() {
-		return messageLength;
+	public int getMaxMessageLength() {
+		return (int)Math.min(MTU - headerLength, getModeParameter());
 	}
 
 }
