@@ -139,15 +139,10 @@ public class HttpThread extends Thread {
 	}
 
 	private void respondError(int status, String reason) {
-		String htmlStr = "<html><head><title>ERROR " + status + "</title></head><body>ERROR " + status + "<br>" + reason
-				+ "</body></html>";
-		
-		byte[] html = htmlStr.getBytes();
 
-		String header = "HTTP/1.1 " + status + " " + reason + "\r\n" + "Content-Type: text/html\r\n"
-				+ "Content-Length: " + html.length + "\r\n" + "Server: " + SERVERTEXT + "\r\n";
+		String header = "HTTP/1.1 " + status + " " + reason + "\r\n" + "Server: " + SERVERTEXT + "\r\n";
 
-		replyWithString(header, html);
+		replyWithString(header, new byte[0]);
 	}
 
 	private void respondOk(int status, String reason, byte[] resource, String type, String method) {
